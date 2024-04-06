@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Apr  6 16:54:47 2024
+
+@author: pedermaeland
+"""
+
 from pyspark import SparkContext, SparkConf
 from math import sqrt, floor
 import sys
@@ -6,37 +14,43 @@ import random as rand
 
 
 def MRApproxOutliers(points_RDD, D, M, K):
-    #RDD_points should be an RDD of points
-    L = D / (2*sqrt(2))
     
-    ###Step A: Transforms RDD_points to RDD of the non empty cells, and (i,j) for each cell and number of points it contains.
+    #Step A
+    Lambda = D / (2*sqrt(2))
     
-    cells_RDD = points_RDD.map(lambda p : ((floor(p[0]/L), floor(p[1]/L)), 1)).reduceByKey(lambda a, b: a + b)
+    def map_to_cells(point):
+        i = floor(point[0]/Lambda)
+        j = floor(point[1]/Lambda)
+        return ((i,j), 1)
+    
+    cells_RDD = points_RDD.map(map_to_cells).reduceByKey(lambda a, b: a + b)
+    
+    local_cells = cells_RDD.collectAsMap()
 
-    ###Step B:
+    #Step B
+    def calculate_N3_N7(cell):
+        i, j = cell[0]
+        N3 = sum([local_cells.get((i+di, j+dj), 0) for di in range(-1, 2) for dj in range(-1, 2)])
+        N7 = sum([local_cells.get((i+di, j+dj), 0) for di in range(-3, 4) for dj in range(-3, 4)])
+        return (cell[0], (cell[1], N3, N7))
         
-    #Compute N3 and N7 for each cell
-    N3_RDD = cells_RDD.flatMap(lambda c: [((c[0][0] + i, c[0][1] + j), c[1]) for i in range(-1, 2) for j in range(-1, 2) if c[1] > 0]).reduceByKey(lambda a, b: a + b)
-    N7_RDD = cells_RDD.flatMap(lambda c: [((c[0][0] + i, c[0][1] + j), c[1]) for i in range(-3, 4) for j in range(-3, 4) if c[1] > 0]).reduceByKey(lambda a, b: a + b)
+    cells_with_N3_N7 = cells_RDD.map(calculate_N3_N7)
     
     
-    #Compute number of sure and uncertain outliers
-    sure_outliers = N3_RDD.filter(lambda c: c[1] <= M).subtractByKey(N7_RDD.filter(lambda c: c[1] > M)).count()
-    uncertain_outliers = N3_RDD.filter(lambda c: c[1] <= M).join(N7_RDD.filter(lambda c: c[1] > M)).count()
+    #x : ((i,j), (count, N3, N7))
+    non_outliers = cells_with_N3_N7.filter(lambda x: x[1][1] > M).count()
+    sure_outliers = cells_with_N3_N7.filter(lambda x: x[1][2] <= M).count()
+    uncertain_outliers = cells_with_N3_N7.filter(lambda x: x[1][1] <= M and x[1][2] > M).count()
     
-    print("Len of N3: ", N3_RDD.count())
-    print("Len of N7: ", N7_RDD.count())
-    
-    print("Number of sure outliers: ", sure_outliers)
-    print("Number of uncertain outliers: ", uncertain_outliers)
+    first_K_cells = cells_RDD.sortBy(lambda x: x[1], ascending=False).take(K)
     
     
-    size_sorted_cells = cells_RDD.map(lambda c : (c[1], c[0])).sortByKey()
-    first_K_cells = size_sorted_cells.take(K)
-    
-    for size, cell in first_K_cells:
-        print(f"Cell: {cell}, Size: {size}")
-    
+        
+    print("Number of sure (D,M)-outliers: ", sure_outliers)
+    print("Number of uncertain points: ", uncertain_outliers)
+    print("Number of non outlier points: ", non_outliers)
+        
+    print(first_K_cells)
 
 def main():
     # CHECKING NUMBER OF CMD LINE PARAMETERS
@@ -57,7 +71,7 @@ def main():
     sc = SparkContext(conf=conf)
 
     # Read the file and parse the points
-    points_rdd = sc.textFile(data_path).map(lambda line: tuple(map(float, line.split(','))))
+    points_rdd = sc.textFile(data_path).map(lambda line: tuple(map(float, line.split(',')))).repartition(2)
     
     for point in points_rdd.collect():
         print(point)
