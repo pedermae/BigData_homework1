@@ -25,7 +25,7 @@ def MRApproxOutliers(points_RDD, D, M, K):
     
     cells_RDD = points_RDD.map(map_to_cells).reduceByKey(lambda a, b: a + b)
     
-    local_cells = cells_RDD.collectAsMap()
+    local_cells = cells_RDD.collectAsMap() #Think we can download locally here
 
     #Step B
     def calculate_N3_N7(cell):
@@ -37,7 +37,8 @@ def MRApproxOutliers(points_RDD, D, M, K):
     cells_with_N3_N7 = cells_RDD.map(calculate_N3_N7)
     
     
-    #x : ((i,j), (count, N3, N7))
+    #Structure of x : ((i,j), (count, N3, N7))
+    
     non_outliers = cells_with_N3_N7.filter(lambda x: x[1][1] > M).count()
     sure_outliers = cells_with_N3_N7.filter(lambda x: x[1][2] <= M).count()
     uncertain_outliers = cells_with_N3_N7.filter(lambda x: x[1][1] <= M and x[1][2] > M).count()
@@ -54,29 +55,27 @@ def MRApproxOutliers(points_RDD, D, M, K):
 
 def main():
     # CHECKING NUMBER OF CMD LINE PARAMETERS
-    assert len(sys.argv) == 3, "Usage: python HW1.py <K> <file_name>"
+    assert len(sys.argv) == 6, "Usage: python HW1.py <file_name> <D> <M> <K> <L>"
     
 	# INPUT READING
-
-	# 1. Read number of partitions
-    K = sys.argv[1]
-    assert K.isdigit(), "K must be an integer"
-    K = int(K)
-
-	# 2. Read input file and subdivide it into K random partitions
-    data_path = sys.argv[2]
+    
+    data_path, D, M, K, L = sys.argv[1:]
     assert os.path.isfile(data_path), "File or folder not found"
+    D, M, K, L = float(D), int(M), int(K), int(L)
+    print(f"data path: {data_path}, D: {D}, M: {M}, K: {K}, L: {L}")
+
 	
     conf = SparkConf().setAppName('HW1')
     sc = SparkContext(conf=conf)
-
+    
     # Read the file and parse the points
-    points_rdd = sc.textFile(data_path).map(lambda line: tuple(map(float, line.split(',')))).repartition(2)
+    rawData = sc.textFile(data_path, L) #L is num of partitions
+    points_rdd = rawData.map(lambda line: tuple(map(float, line.split(','))))
     
     for point in points_rdd.collect():
         print(point)
     
-    MRApproxOutliers(points_rdd, 1, 3, 9)
+    MRApproxOutliers(points_rdd, D, M, K)
     
     
 
