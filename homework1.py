@@ -1,15 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Apr  6 16:54:47 2024
-
-@author: pedermaeland
-"""
 
 from pyspark import SparkContext, SparkConf
 from math import sqrt, floor
-import sys
-import os
+import sys, os, time
 import random as rand
 
 
@@ -43,7 +35,9 @@ def MRApproxOutliers(points_RDD, D, M, K):
     sure_outliers = cells_with_N3_N7.filter(lambda x: x[1][2] <= M).count()
     uncertain_outliers = cells_with_N3_N7.filter(lambda x: x[1][1] <= M and x[1][2] > M).count()
     
-    first_K_cells = cells_RDD.sortBy(lambda x: x[1], ascending=False).take(K)
+    
+    
+    first_K_cells = cells_RDD.sortBy(lambda x: x[1], ascending=True).take(K)
     
     
         
@@ -51,7 +45,8 @@ def MRApproxOutliers(points_RDD, D, M, K):
     print("Number of uncertain points: ", uncertain_outliers)
     print("Number of non outlier points: ", non_outliers)
         
-    print(first_K_cells)
+    for cell, size in first_K_cells:
+        print(f"Cell: {cell}, Size: {size}")
 
 def main():
     # CHECKING NUMBER OF CMD LINE PARAMETERS
@@ -71,11 +66,25 @@ def main():
     # Read the file and parse the points
     rawData = sc.textFile(data_path, L) #L is num of partitions
     points_rdd = rawData.map(lambda line: tuple(map(float, line.split(','))))
+    points_num = points_rdd.count()
+    print(f"Number of points = {points_num}")
+        
+    if points_num <= 200000:
+        points_list = points_rdd.collect()
+        print("Less than 200k points")
+        time_start = time.time()
+        MRApproxOutliers(points_rdd, D, M, K)
+        time_stop = time.time()
+        time_ms = (time_stop - time_start)*1000
+        print (f"Running time of MRApproxOutliers = {time_ms} ms")
+    else:
+        time_start = time.time()
+        MRApproxOutliers(points_rdd, D, M, K)
+        time_stop = time.time()
+        time_ms = (time_stop - time_start)*1000
+        print (f"Running time of MRApproxOutliers = {time_ms} ms")
+        
     
-    for point in points_rdd.collect():
-        print(point)
-    
-    MRApproxOutliers(points_rdd, D, M, K)
     
     
 
