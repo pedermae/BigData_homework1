@@ -5,6 +5,10 @@ import sys, os, time
 import random as rand
 
 
+
+
+
+
 def MRApproxOutliers(points_RDD, D, M, K):
     
     #Step A
@@ -17,9 +21,8 @@ def MRApproxOutliers(points_RDD, D, M, K):
     
     cells_RDD = points_RDD.map(map_to_cells).reduceByKey(lambda a, b: a + b)
     
-    local_cells = cells_RDD.collectAsMap() #Think we can download locally here
+    local_cells = cells_RDD.collectAsMap() #Think we can download locally here, not sure if already done in caching in Main.
 
-    #Step B
     def calculate_N3_N7(cell):
         i, j = cell[0]
         N3 = sum([local_cells.get((i+di, j+dj), 0) for di in range(-1, 2) for dj in range(-1, 2)])
@@ -34,13 +37,8 @@ def MRApproxOutliers(points_RDD, D, M, K):
     non_outliers = cells_with_N3_N7.filter(lambda x: x[1][1] > M).count()
     sure_outliers = cells_with_N3_N7.filter(lambda x: x[1][2] <= M).count()
     uncertain_outliers = cells_with_N3_N7.filter(lambda x: x[1][1] <= M and x[1][2] > M).count()
-    
-    
-    
     first_K_cells = cells_RDD.sortBy(lambda x: x[1], ascending=True).take(K)
     
-    
-        
     print("Number of sure (D,M)-outliers: ", sure_outliers)
     print("Number of uncertain points: ", uncertain_outliers)
     print("Number of non outlier points: ", non_outliers)
@@ -62,9 +60,7 @@ def main():
 	
     conf = SparkConf().setAppName('HW1')
     sc = SparkContext(conf=conf)
-    
-    # Read the file and parse the points
-    rawData = sc.textFile(data_path, L) #L is num of partitions
+    rawData = sc.textFile(data_path).repartition(L).cache() #L is num of partitions
     points_rdd = rawData.map(lambda line: tuple(map(float, line.split(','))))
     points_num = points_rdd.count()
     print(f"Number of points = {points_num}")
@@ -76,6 +72,7 @@ def main():
         MRApproxOutliers(points_rdd, D, M, K)
         time_stop = time.time()
         time_ms = (time_stop - time_start)*1000
+        
         print (f"Running time of MRApproxOutliers = {time_ms} ms")
     else:
         time_start = time.time()
