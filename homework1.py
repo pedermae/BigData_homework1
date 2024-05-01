@@ -1,10 +1,14 @@
-from pyspark import SparkContext, SparkConf, RDD
+
+from pyspark import SparkContext, SparkConf
 from math import sqrt, floor
 import sys, os, time, zipfile
-import random as rand        
+import random as rand
+from collections import defaultdict
+from multiprocessing import Pool
 
-        
-def MRApproxOutliers(points_RDD, D, M):
+def MRApproxOutliers(rawData, D, M, K, L):
+    points_RDD = rawData.map(lambda line: tuple(map(float, line.split(','))))
+    points_RDD.repartition(L).cache()
 
     def map_to_cell(point):
         Lambda = D / (2*sqrt(2))
@@ -45,66 +49,30 @@ def MRApproxOutliers(points_RDD, D, M):
                 uncertain_outliers += counts[0]
     print(f"Sure outliers: {sure_outliers}")
     print(f"Uncertain outliers: {uncertain_outliers}")
-        
-        
-def eucl_dist(p1,p2):
-        return (((p1[0] - p2[0])**2) + (p1[1]-p2[1])**2)**0.5
-        
-
-def SequentialFFT(P: list, K: int) -> list:
-    print("P: ", P)
-    try:
-        S = [P.pop(rand.randint(0, len(P) - 1))]
-    except ValueError:
-        return []
-
-    while len(S) < K:
-        point = max(P, key=lambda x: min(eucl_dist(x, c) for c in S))
-        S.append(point)
-        P.remove(point)
+    first_K_cells = cells_RDD.sortBy(lambda x: x[1], ascending=True).take(K)
+    for cell, size in first_K_cells:
+        print(f"Cell: {cell}, Size: {size}")
     
-    print("S: ", S)
-    return S
-
-        
     
 def main():
     # CHECKING NUMBER OF CMD LINE PARAMETERS
-    assert len(sys.argv) == 5, "Usage: python HW1.py <file_name> <M> <K> <L>"
-    
-	# INPUT READING
-    
-    file_name, M, K, L = sys.argv[1:]
+    assert len(sys.argv) == 6, "Usage: python HW1.py <file_name> <D> <M> <K> <L>"
+    file_name, D, M, K, L = sys.argv[1:]
     assert os.path.isfile(file_name), "File or folder not found"
-    M, K, L = int(M), int(K), int(L)
-    print(f"data path: {file_name}, M: {M}, K: {K}, L: {L}")
+    D, M, K, L = float(D), int(M), int(K), int(L)
+    print(f"data path: {file_name}, D: {D}, M: {M}, K: {K}, L: {L}")
     
-
-            
-    conf = SparkConf().setAppName('HW2')
+    conf = SparkConf().setAppName('HW1')
     sc = SparkContext(conf=conf)
-    
-    point_map = []
-    rawData = sc.textFile(file_name) #L is num of partitions
-    inputPoints = rawData.map(lambda line: tuple(map(float, line.split(','))))
-    inputPoints.repartition(L).cache()
-    points_num = inputPoints.count()
-    print(f"Number of points = {points_num}")
-    round1 = inputPoints.mapPartitions(lambda partition: SequentialFFT(list(partition), K))
-    round1 = round1.collect()
-    print("Round1: ", round1)
-    round2 = SequentialFFT(round1, K)
-    print("Round2: ", round2)
-    round3 = inputPoints.map(lambda x: min(eucl_dist(x,c) for c in round2)).max()
-    print("Round3: ", round3)
-    time_start = time.time()
-    MRApproxOutliers(inputPoints, round3, M)
-    time_stop = time.time()
-    time_ms = round((time_stop - time_start)*1000)
-    print (f"Running time of MRApproxOutliers = {time_ms} ms")
-
+    if file_name.endswith(".zip"):
+        fn = file_name.removesuffix(".zip")
+        rawData = sc.textFile(fn)
+        time_start = time.time()
+        MRApproxOutliers(rawData, D, M, K, L)
+        time_stop = time.time()
+        time_ms = round((time_stop - time_start)*1000)
+        print(f"Running time of MRApproxOutliers = {time_ms} ms")
     
 
 if __name__ == "__main__":
     main()
-
