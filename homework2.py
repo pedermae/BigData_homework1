@@ -87,7 +87,7 @@ def main():
     point_map = []
     rawData = sc.textFile(file_name) #L is num of partitions
     inputPoints = rawData.map(lambda line: tuple(map(float, line.split(','))))
-    inputPoints.repartition(L).cache()
+    inputPoints = inputPoints.repartition(L).cache()
     points_num = inputPoints.count()
     print(f"Number of points = {points_num}")
     round1 = inputPoints.mapPartitions(lambda partition: SequentialFFT(list(partition), K))
