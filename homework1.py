@@ -48,7 +48,7 @@ def MRApproxOutliers(rawData, D, M, K, L):
             if counts[1] <= M and counts[2] > M:
                 uncertain_outliers += counts[0]
     print(f"Sure outliers: {sure_outliers}")
-    print("Uncertain outliers: {uncertain_outliers}")
+    print(f"Uncertain outliers: {uncertain_outliers}")
     first_K_cells = cells_RDD.sortBy(lambda x: x[1], ascending=True).take(K)
     for cell, size in first_K_cells:
         print(f"Cell: {cell}, Size: {size}")
