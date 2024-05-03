@@ -3,6 +3,9 @@ from math import sqrt, floor
 import sys, os, time
 import random as rand        
 
+
+conf = SparkConf().setAppName('HW2')
+sc = SparkContext(conf=conf)
         
 def MRApproxOutliers(points_RDD, D, M):
 
@@ -65,7 +68,10 @@ def SequentialFFT(P: list, K: int) -> list:
     
     return S
 
-        
+def radius_calculation(point, cluster_centers):
+    centers = cluster_centers.value
+    return min(eucl_dist(point, center) for center in centers)
+
     
 def main():
     # CHECKING NUMBER OF CMD LINE PARAMETERS
@@ -78,9 +84,6 @@ def main():
     M, K, L = int(M), int(K), int(L)
     print(f"data path: {file_name}, M: {M}, K: {K}, L: {L}")
             
-    conf = SparkConf().setAppName('HW2')
-    sc = SparkContext(conf=conf)
-    
     rawData = sc.textFile(file_name) #L is num of partitions
     inputPoints = rawData.map(lambda line: tuple(map(float, line.split(','))))
     inputPoints = inputPoints.repartition(L).cache()
@@ -97,10 +100,11 @@ def main():
     round2 = SequentialFFT(round1, K)
     time_stop = time.time()
     time_ms = round((time_stop - time_start)*1000)
+    cluster_centers = sc.broadcast(round2)
     print (f"Running time of Round2 = {time_ms} ms")
     print("Round2: ", round2)
     time_start = time.time()
-    round3 = inputPoints.map(lambda x: min(eucl_dist(x,c) for c in round2)).max()
+    round3 = inputPoints.map(lambda x: radius_calculation(x, cluster_centers)).reduce(max)
     time_stop = time.time()
     time_ms = round((time_stop - time_start)*1000)
     print (f"Running time of Round3 = {time_ms} ms")
