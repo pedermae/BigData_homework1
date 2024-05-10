@@ -6,9 +6,6 @@ import numpy as np
 
 conf = SparkConf().setAppName('HW2')
 sc = SparkContext(conf=conf)
-P = []
-S = []
-Assign = {}
         
 def MRApproxOutliers(points_RDD, D, M):
 
@@ -49,8 +46,8 @@ def MRApproxOutliers(points_RDD, D, M):
             
             if counts[1] <= M and counts[2] > M:
                 uncertain_outliers += counts[0]
-    print("Sure Outliers: ", sure_outliers)
-    print("Uncertain Outliers: ", uncertain_outliers)
+    print("Number of sure outliers = ", sure_outliers)
+    print("Number of uncertain points = ", uncertain_outliers)
         
 
         
@@ -98,13 +95,13 @@ def main():
     
     file_name, M, K, L = sys.argv[1:]
     M, K, L = int(M), int(K), int(L)
-    print("Data Path: ", file_name, ", M:", M, ", K:", K, ", L:", L)
+    print(file_name, ", M=", M, ", K=", K, ", L=", L)
             
     rawData = sc.textFile(file_name) #L is num of partitions
     inputPoints = rawData.map(lambda line: tuple(map(float, line.split(','))))
     inputPoints = inputPoints.repartition(L).cache()
     points_num = inputPoints.count()
-    print("Number of Points: ", points_num)
+    print("Number of Points = ", points_num)
     
     time_start = time.time()
     round1 = inputPoints.mapPartitions(lambda partition: SequentialFFT(list(partition), K)).persist()
