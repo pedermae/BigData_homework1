@@ -1,11 +1,14 @@
 from pyspark import SparkContext, SparkConf
-from math import sqrt, floor
+from math import sqrt, floor, dist
 import sys, os, time
 import random as rand        
-
+import numpy as np
 
 conf = SparkConf().setAppName('HW2')
 sc = SparkContext(conf=conf)
+P = []
+S = []
+Assign = {}
         
 def MRApproxOutliers(points_RDD, D, M):
 
@@ -46,31 +49,45 @@ def MRApproxOutliers(points_RDD, D, M):
             
             if counts[1] <= M and counts[2] > M:
                 uncertain_outliers += counts[0]
-    print(f"Sure outliers: {sure_outliers}")
-    print(f"Uncertain outliers: {uncertain_outliers}")
+    print("Sure Outliers: ", sure_outliers)
+    print("Uncertain Outliers: ", uncertain_outliers)
         
 
         
 def eucl_dist(p1,p2):
-        return (((p1[0] - p2[0])**2) + (p1[1]-p2[1])**2)**0.5
+    return dist(p1,p2)
         
 
 def SequentialFFT(P: list, K: int) -> list:
+    dist = []
+    S = list()
+    
     try:
-        S = [P.pop(rand.randint(0, len(P) - 1))]
-    except ValueError:
+        new_center = P[rand.randint(0, len(P) - 1)]
+        S.append(new_center)
+    except ValueError: 
         return []
 
+    for i, point in enumerate(P):
+        dist.append(eucl_dist(point, new_center))
+
     while len(S) < K:
-        point = max(P, key=lambda x: min(eucl_dist(x, c) for c in S))
-        S.append(point)
-        P.remove(point)
-    
+        for i in np.argsort(dist)[::-1]:
+            if P[i] not in S:
+                new_center = P[i]
+                S.append(new_center)
+                break
+
+        for i, point in enumerate(P):
+            new_dist = eucl_dist(point, new_center)
+            if new_dist < dist[i]:
+                dist[i] = new_dist
+
     return S
 
 def radius_calculation(point, cluster_centers):
     centers = cluster_centers.value
-    return min(eucl_dist(point, center) for center in centers)
+    return min(eucl_dist(point, c) for c in centers)            
 
     
 def main():
@@ -80,40 +97,41 @@ def main():
 	# INPUT READING
     
     file_name, M, K, L = sys.argv[1:]
-    assert os.path.isfile(file_name), "File or folder not found"
     M, K, L = int(M), int(K), int(L)
-    print(f"data path: {file_name}, M: {M}, K: {K}, L: {L}")
+    print("Data Path: ", file_name, ", M:", M, ", K:", K, ", L:", L)
             
     rawData = sc.textFile(file_name) #L is num of partitions
     inputPoints = rawData.map(lambda line: tuple(map(float, line.split(','))))
     inputPoints = inputPoints.repartition(L).cache()
     points_num = inputPoints.count()
-    print(f"Number of points = {points_num}")
+    print("Number of Points: ", points_num)
+    
     time_start = time.time()
-    round1 = inputPoints.mapPartitions(lambda partition: SequentialFFT(list(partition), K))
+    round1 = inputPoints.mapPartitions(lambda partition: SequentialFFT(list(partition), K)).persist()
+    round1.count()
     time_stop = time.time()
     time_ms = round((time_stop - time_start)*1000)
-    print (f"Running time of Round1 = {time_ms} ms")
-    round1 = round1.collect()
-    print("Round1: ", round1)
+    print("Running time of MRFFT Round 1 = ", time_ms, " ms")
+    
     time_start = time.time()
-    round2 = SequentialFFT(round1, K)
+    round2 = SequentialFFT(round1.collect(), K)
     time_stop = time.time()
     time_ms = round((time_stop - time_start)*1000)
+    print("Running time of MRFFT Round 2 = ", time_ms, " ms")
     cluster_centers = sc.broadcast(round2)
-    print (f"Running time of Round2 = {time_ms} ms")
-    print("Round2: ", round2)
+    
     time_start = time.time()
     round3 = inputPoints.map(lambda x: radius_calculation(x, cluster_centers)).reduce(max)
     time_stop = time.time()
     time_ms = round((time_stop - time_start)*1000)
-    print (f"Running time of Round3 = {time_ms} ms")
-    print("Round3: ", round3)
+    print("Running time of MRFFT Round 3 = ", time_ms, " ms")
+    print("Radius = ", round3)
+    
     time_start = time.time()
     MRApproxOutliers(inputPoints, round3, M)
     time_stop = time.time()
     time_ms = round((time_stop - time_start)*1000)
-    print (f"Running time of MRApproxOutliers = {time_ms} ms")
+    print("Running Time of MRApproxOutliers = ", time_ms, " ms")
 
     
 
