@@ -5,6 +5,7 @@ import random as rand
 import numpy as np
 
 conf = SparkConf().setAppName('HW2')
+conf.set("spark.locality.wait", "0s")
 sc = SparkContext(conf=conf)
         
 def MRApproxOutliers(points_RDD, D, M):
@@ -55,7 +56,7 @@ def eucl_dist(p1,p2):
     return dist(p1,p2)
         
 
-def SequentialFFT(P: list, K: int) -> list:
+def MRFFT(P: list, K: int) -> list:
     dist = []
     S = list()
     
@@ -69,9 +70,11 @@ def SequentialFFT(P: list, K: int) -> list:
         dist.append(eucl_dist(point, new_center))
 
     while len(S) < K:
-        for i in np.argsort(dist)[::-1]:
-            if P[i] not in S:
-                new_center = P[i]
+        for i in  np.argsort(dist)[::-1]:
+            point = P.pop(i)
+            dist.pop(i)
+            if point not in S:
+                new_center = point
                 S.append(new_center)
                 break
 
@@ -104,14 +107,14 @@ def main():
     print("Number of Points = ", points_num)
     
     time_start = time.time()
-    round1 = inputPoints.mapPartitions(lambda partition: SequentialFFT(list(partition), K)).persist()
+    round1 = inputPoints.mapPartitions(lambda partition: MRFFT(list(partition), K)).persist()
     round1.count()
     time_stop = time.time()
     time_ms = round((time_stop - time_start)*1000)
     print("Running time of MRFFT Round 1 = ", time_ms, " ms")
     
     time_start = time.time()
-    round2 = SequentialFFT(round1.collect(), K)
+    round2 = MRFFT(round1.collect(), K)
     time_stop = time.time()
     time_ms = round((time_stop - time_start)*1000)
     print("Running time of MRFFT Round 2 = ", time_ms, " ms")
